@@ -1,0 +1,46 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <source>8</source>
+          <target>8</target>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+  <parent>
+    <groupId>org.eclipse.jetty.apidiff</groupId>
+    <artifactId>apidiff-parent</artifactId>
+    <version>1.0-SNAPSHOT</version>
+  </parent>
+  <artifactId>reports</artifactId>
+  <packaging>jar</packaging>
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <japicmp.version>0.14.4</japicmp.version>
+  </properties>
+  <dependencies>
+    <dependency>
+      <groupId>org.eclipse.jetty.apidiff</groupId>
+      <artifactId>jetty-9.4</artifactId>
+      <version>${project.version}</version>
+      <type>pom</type>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.jetty.apidiff</groupId>
+      <artifactId>jetty-10.0</artifactId>
+      <version>${project.version}</version>
+      <type>pom</type>
+    </dependency>
+    <dependency>
+      <groupId>com.github.siom79.japicmp</groupId>
+      <artifactId>japicmp</artifactId>
+      <version>${japicmp.version}</version>
+    </dependency>
+  </dependencies>
+</project>

@@ -7,10 +7,47 @@
   <packaging>pom</packaging>
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <compiler.source>11</compiler.source>
+    <compiler.target>11</compiler.target>
+    <compiler.release>11</compiler.release>
   </properties>
+  <scm>
+    <connection>scm:git:https://github.com/jetty-project/apidiff.git</connection>
+    <developerConnection>scm:git:git@github.com:jetty-project/apidiff.git</developerConnection>
+    <url>https://github.com/jetty-project/apidiff</url>
+  </scm>
   <modules>
     <module>jetty-9.4</module>
     <module>jetty-10.0</module>
     <module>jetty-11.0</module>
+    <module>reports</module>
   </modules>
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-dependency-plugin</artifactId>
+          <version>3.1.2</version>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>buildnumber-maven-plugin</artifactId>
+          <version>1.4</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+  <repositories>
+    <repository>
+      <id>staging</id>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <url>https://oss.sonatype.org/content/groups/jetty-with-staging/</url>
+    </repository>
+  </repositories>
 </project>
