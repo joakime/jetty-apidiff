@@ -18,6 +18,8 @@
 
 package org.eclipse.jetty.apidiff;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
@@ -26,23 +28,26 @@ import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Properties;
+import java.util.function.Function;
 
 import japicmp.cmp.JApiCmpArchive;
 import japicmp.cmp.JarArchiveComparator;
 import japicmp.cmp.JarArchiveComparatorOptions;
 import japicmp.config.Options;
+import japicmp.model.AccessModifier;
 import japicmp.model.JApiClass;
-import japicmp.output.semver.SemverOut;
-import japicmp.output.stdout.StdoutOutputGenerator;
 import japicmp.output.xml.XmlOutput;
 import japicmp.output.xml.XmlOutputGenerator;
 import japicmp.output.xml.XmlOutputGeneratorOptions;
 import japicmp.util.Optional;
+
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 public class Reports
 {
@@ -57,12 +62,33 @@ public class Reports
         Path jettyRoot11 = basedir.resolve("jetty-11.0").toAbsolutePath();
 
         // Compare 9.4 to 10.0
-        reports.generateDiff(jettyRoot9, jettyRoot10, "jetty-9.4-to-10.0-diff.html");
-        reports.generateDiff(jettyRoot10, jettyRoot11, "jetty-10.0-to-11.0-diff.html");
+        reports.generateDiff(jettyRoot9, jettyRoot10, "target/jetty-9.4-to-10.0-diff.html");
 
+        // Compare 10.0 to 11.0
+        reports.generateDiff(jettyRoot10, jettyRoot11, "target/jetty-10.0-to-11.0-diff.html");
     }
 
-    public void generateDiff(Path jettyRootOld, Path jettyRootNew, String outputFilename)
+    private void cleanup(Path text, Function<String, String> lineFunction) throws IOException
+    {
+        // copy text to new location
+        Path copyOf = Paths.get("target/copy-of-" + text.getFileName());
+        Files.move(text, copyOf, StandardCopyOption.REPLACE_EXISTING);
+
+        // Create new file (on the fly)
+        try (BufferedReader reader = Files.newBufferedReader(copyOf, UTF_8);
+             BufferedWriter writer = Files.newBufferedWriter(text, UTF_8))
+        {
+            String line;
+            while ((line = reader.readLine()) != null)
+            {
+                String result = lineFunction.apply(line);
+                writer.write(result);
+                writer.write("\n");
+            }
+        }
+    }
+
+    public Path generateDiff(Path jettyRootOld, Path jettyRootNew, String outputFilename)
     {
         try
         {
@@ -74,6 +100,13 @@ public class Reports
             Options options = Options.newDefault();
             options.setHtmlOutputFile(Optional.of(outputFilename));
             options.setIgnoreMissingClasses(true);
+            options.setOutputOnlyModifications(true);
+            options.setOutputOnlyBinaryIncompatibleModifications(false);
+            options.setIgnoreMissingNewVersion(false);
+            options.setIgnoreMissingOldVersion(false);
+            options.setSemanticVersioning(false);
+            options.setAccessModifier(AccessModifier.PROTECTED);
+            options.setHtmlStylesheet(Optional.of("src/main/resources/report.css"));
 
             String oldVersion = loadVersion(jettyRootOld);
             String newVersion = loadVersion(jettyRootNew);
@@ -81,12 +114,23 @@ public class Reports
             options.setOldArchives(toList(jettyRootOld, oldVersion));
             options.setNewArchives(toList(jettyRootNew, newVersion));
             JarArchiveComparator jarArchiveComparator = new JarArchiveComparator(JarArchiveComparatorOptions.of(options));
+            // example of how to tweak rules
+            /*
+            jarArchiveComparator.getJarArchiveComparatorOptions().addOverrideCompatibilityChange(
+                new JarArchiveComparatorOptions.OverrideCompatibilityChange(
+                    JApiCompatibilityChange.METHOD_REMOVED_IN_SUPERCLASS,
+                    true, true, JApiSemanticVersionLevel.MAJOR
+                )
+            );
+             */
             List<JApiClass> jApiClasses = jarArchiveComparator.compare(options.getOldArchives(), options.getNewArchives());
 
-            SemverOut semverOut = new SemverOut(options, jApiClasses);
+            Path htmlOutputPath = Paths.get(outputFilename);
+            System.out.printf("## Generating report: %s%n", htmlOutputPath);
+
             XmlOutputGeneratorOptions xmlOutputGeneratorOptions = new XmlOutputGeneratorOptions();
             xmlOutputGeneratorOptions.setCreateSchemaFile(true);
-            xmlOutputGeneratorOptions.setSemanticVersioningInformation(semverOut.generate());
+            xmlOutputGeneratorOptions.setTitle("Changes in Eclipse Jetty APIs from " + oldVersion + " to " + newVersion);
             XmlOutputGenerator xmlGenerator = new XmlOutputGenerator(jApiClasses, options, xmlOutputGeneratorOptions);
             try (XmlOutput xmlOutput = xmlGenerator.generate())
             {
@@ -97,23 +141,29 @@ public class Reports
                 e.printStackTrace();
             }
 
+            System.out.printf("## Cleaning report: %s%n", htmlOutputPath);
+
+            String rootOld = jettyRootOld.resolve("target/dependency/").toAbsolutePath().toString();
+            String rootNew = jettyRootNew.resolve("target/dependency/").toAbsolutePath().toString();
+            cleanup(htmlOutputPath, (line) ->
+                line.replaceAll(rootOld, "\\${maven.repo}")
+                    .replaceAll(rootNew, "\\${maven.repo}")
+                    .replaceAll(".jar;", ".jar<br/>\n")
+                    .replaceAll(".jar:", ".jar<br/>\n")
+            );
+
+            /*
             StdoutOutputGenerator stdoutOutputGenerator = new StdoutOutputGenerator(options, jApiClasses);
             String output = stdoutOutputGenerator.generate();
             System.out.println(output);
-
-            /*if (options.isErrorOnBinaryIncompatibility()
-                || options.isErrorOnSourceIncompatibility()
-                || options.isErrorOnExclusionIncompatibility()
-                || options.isErrorOnModifications()
-                || options.isErrorOnSemanticIncompatibility()) {
-                IncompatibleErrorOutput errorOutput = new IncompatibleErrorOutput(options, jApiClasses, jarArchiveComparator);
-                errorOutput.generate();
-            }*/
+             */
         }
         catch (IOException e)
         {
             e.printStackTrace();
         }
+
+        return Paths.get(outputFilename);
     }
 
     private String loadVersion(Path root) throws IOException
@@ -141,16 +191,20 @@ public class Reports
             @Override
             public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException
             {
-                if (file.getFileName().toString().endsWith(".jar"))
+                if (!file.getFileName().toString().endsWith(".jar"))
                 {
-                    if (file.toString().contains("org/eclipse/jetty"))
+                    // skip
+                    return FileVisitResult.CONTINUE;
+                }
+
+                if (file.toString().contains("org/eclipse/jetty"))
+                {
+                    if (!file.toString().contains("/toolchain/") && !file.toString().contains("/orbit/"))
                     {
-                        if (!file.toString().contains("/toolchain/"))
-                        {
-                            archives.add(new JApiCmpArchive(file.toFile(), version));
-                        }
+                        archives.add(new JApiCmpArchive(file.toFile(), version));
                     }
                 }
+
                 return FileVisitResult.CONTINUE;
             }
 
@@ -166,6 +220,8 @@ public class Reports
                 return FileVisitResult.CONTINUE;
             }
         });
+
+        Collections.sort(archives, new JApiCmpArchiveComparator());
 
         return archives;
     }
